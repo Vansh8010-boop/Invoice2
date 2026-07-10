@@ -1,0 +1,575 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>writingale — work order system</title>
+<link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=Oswald:wght@500;600;700&family=Barlow:wght@400;500;600&family=JetBrains+Mono:wght@400;600;700&display=swap">
+<style>
+  :root{
+    --rust:#B5502A; --rust-deep:#7A3319; --rust-light:#D97A4E;
+    --steel:#445048; --steel-light:#5C6D64;
+    --hazard:#E8A93A; --metal:#D8D4CB; --metal-dim:#a8a49a;
+    --bg:#1A1917; --panel:#242220; --panel-2:#2B2825; --ink:#100F0E;
+    --paid:#5C8A63; --due:#E8A93A; --line:#3a3631; --radius:4px;
+  }
+  *{box-sizing:border-box;}
+  body{margin:0;}
+  .wg-root{
+    font-family:'Barlow',sans-serif;
+    background:
+      radial-gradient(ellipse 600px 300px at 15% 0%, rgba(181,80,42,0.07), transparent 60%),
+      radial-gradient(ellipse 500px 400px at 90% 80%, rgba(68,80,72,0.10), transparent 60%),
+      var(--bg);
+    color:var(--metal); min-height:100vh; padding:0 0 48px 0; position:relative;
+  }
+  .wg-shell{position:relative; z-index:1; max-width:1180px; margin:0 auto; padding:28px 20px 0;}
+  .wg-topbar{display:flex; align-items:center; justify-content:space-between; gap:20px; flex-wrap:wrap;}
+  .wg-brand-plate{background:linear-gradient(160deg,#3a352f,#201d1a); border:1px solid #4a453e; border-radius:3px; padding:9px 16px 8px; box-shadow:inset 0 1px 0 rgba(255,255,255,0.06), 0 3px 8px rgba(0,0,0,0.4); position:relative;}
+  .wg-brand-plate .bolt{position:absolute; width:5px; height:5px; border-radius:50%; background:radial-gradient(circle at 35% 35%, #8a8378, #2a2621); top:4px; left:4px;}
+  .wg-brand-plate .bolt.br{left:auto; right:4px;}
+  .wg-wordmark{font-family:'Oswald',sans-serif; font-weight:700; font-size:22px; letter-spacing:2px; color:var(--metal); text-transform:uppercase; line-height:1;}
+  .wg-wordmark span{color:var(--rust-light);}
+  .wg-tagline{font-family:'Barlow',sans-serif; font-size:9.5px; letter-spacing:3px; color:var(--metal-dim); text-transform:uppercase; margin-top:3px;}
+  .wg-status-pill{display:flex; align-items:center; gap:6px; font-family:'JetBrains Mono',monospace; font-size:11px; color:var(--metal-dim);}
+  .wg-status-dot{width:7px; height:7px; border-radius:50%; background:var(--paid); box-shadow:0 0 6px var(--paid);}
+  .wg-status-dot.offline{background:var(--rust); box-shadow:0 0 6px var(--rust);}
+  .wg-tabs{display:flex; gap:6px; flex-wrap:wrap;}
+  .wg-tab{font-family:'Oswald',sans-serif; font-size:12.5px; letter-spacing:1.2px; text-transform:uppercase; color:var(--metal-dim); background:linear-gradient(180deg,#2c2924,#211f1b); border:1px solid #423d36; border-bottom:3px solid #1b1917; padding:11px 16px 9px; border-radius:3px 3px 0 0; cursor:pointer; display:flex; align-items:center; gap:7px; transition:all .15s ease;}
+  .wg-tab svg{width:14px; height:14px; opacity:0.7;}
+  .wg-tab:hover{color:var(--metal); background:linear-gradient(180deg,#332f29,#26231f);}
+  .wg-tab.active{color:#fff; border-bottom:3px solid var(--rust); background:linear-gradient(180deg,#332e29,#292520);}
+  .wg-tab.active svg{opacity:1;}
+  .wg-hazard{height:6px; margin:18px 0 26px 0; background:repeating-linear-gradient(135deg, var(--hazard) 0 14px, #26221d 14px 28px); border-radius:2px; opacity:0.9;}
+  .wg-panel{background:linear-gradient(175deg, var(--panel-2), var(--panel)); border:1px solid var(--line); border-radius:var(--radius); padding:26px 26px 24px; position:relative; box-shadow:0 10px 24px rgba(0,0,0,0.28), inset 0 1px 0 rgba(255,255,255,0.03); margin-bottom:22px;}
+  .rivet{position:absolute; width:9px; height:9px; border-radius:50%; background:radial-gradient(circle at 32% 32%, #8f887c, #2a2621 70%); box-shadow:0 1px 2px rgba(0,0,0,0.5);}
+  .rivet.tl{top:10px; left:10px;} .rivet.tr{top:10px; right:10px;} .rivet.bl{bottom:10px; left:10px;} .rivet.br{bottom:10px; right:10px;}
+  .wg-panel-head{margin-bottom:20px; padding-right:10px;}
+  .wg-panel-eyebrow{font-family:'JetBrains Mono',monospace; font-size:10.5px; letter-spacing:2px; color:var(--rust-light); text-transform:uppercase; margin-bottom:4px;}
+  .wg-panel-title{font-family:'Oswald',sans-serif; font-weight:600; font-size:22px; text-transform:uppercase; letter-spacing:0.5px; color:#fff;}
+  .wg-panel-sub{font-size:13px; color:var(--metal-dim); margin-top:4px;}
+  .wg-grid{display:grid; grid-template-columns:1fr 1fr; gap:16px;}
+  .wg-grid-3{display:grid; grid-template-columns:1fr 1fr 1fr; gap:16px;}
+  .wg-field{margin-bottom:16px;}
+  .wg-label{display:block; font-family:'Oswald',sans-serif; font-size:11px; letter-spacing:1.5px; text-transform:uppercase; color:var(--metal-dim); margin-bottom:7px;}
+  .wg-hint{font-size:11px; color:var(--metal-dim); opacity:0.75; margin-top:5px; font-style:italic;}
+  .wg-input, .wg-select{width:100%; background:var(--ink); border:1px solid #3d3831; color:var(--metal); font-family:'Barlow',sans-serif; font-size:14px; padding:10px 12px; border-radius:3px; transition:border-color .15s ease;}
+  .wg-input:focus, .wg-select:focus{outline:none; border-color:var(--rust); box-shadow:0 0 0 3px rgba(181,80,42,0.15);}
+  .wg-input::placeholder{color:#5a564e;}
+  select.wg-select{appearance:none; background-image:url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' width='12' height='8'%3E%3Cpath d='M1 1l5 5 5-5' stroke='%23a8a49a' stroke-width='1.5' fill='none'/%3E%3C/svg%3E"); background-repeat:no-repeat; background-position:right 12px center;}
+  .wg-toggle-row{display:flex; gap:8px;}
+  .wg-toggle{flex:1; text-align:center; padding:10px 8px; border-radius:3px; border:1px solid #3d3831; background:var(--ink); color:var(--metal-dim); font-family:'Oswald',sans-serif; font-size:12px; letter-spacing:0.8px; text-transform:uppercase; cursor:pointer; display:flex; align-items:center; justify-content:center; gap:6px; transition:all .15s ease;}
+  .wg-toggle svg{width:14px; height:14px;}
+  .wg-toggle:hover{border-color:#54493d;}
+  .wg-toggle.active{background:linear-gradient(180deg,var(--rust),var(--rust-deep)); border-color:var(--rust-deep); color:#fff; box-shadow:inset 0 1px 0 rgba(255,255,255,0.2);}
+  .wg-btn{font-family:'Oswald',sans-serif; font-size:13px; letter-spacing:1.3px; text-transform:uppercase; padding:12px 22px; border-radius:3px; border:1px solid var(--rust-deep); cursor:pointer; background:linear-gradient(180deg, var(--rust), var(--rust-deep)); color:#fff; box-shadow:inset 0 1px 0 rgba(255,255,255,0.18), 0 4px 10px rgba(122,51,25,0.35); transition:transform .1s ease, box-shadow .15s ease;}
+  .wg-btn:hover{transform:translateY(-1px);}
+  .wg-btn:disabled{opacity:0.4; cursor:not-allowed; transform:none;}
+  .wg-btn-ghost{background:transparent; border:1px solid #4a453e; color:var(--metal); box-shadow:none;}
+  .wg-btn-ghost:hover{border-color:var(--steel-light); background:rgba(68,80,72,0.15);}
+  .wg-btn-steel{background:linear-gradient(180deg, var(--steel-light), var(--steel)); border-color:#2e3a34;}
+  .wg-btn-block{width:100%;}
+  .wg-btn-sm{padding:7px 12px; font-size:11px;}
+  .wg-table-wrap{overflow-x:auto; border:1px solid var(--line); border-radius:3px;}
+  table.wg-table{width:100%; border-collapse:collapse; font-size:13.5px; min-width:640px;}
+  table.wg-table thead th{font-family:'Oswald',sans-serif; font-size:10.5px; letter-spacing:1.4px; text-transform:uppercase; color:var(--metal-dim); background:#1c1a17; padding:11px 14px; text-align:left; border-bottom:1px solid var(--line); white-space:nowrap;}
+  table.wg-table tbody td{padding:12px 14px; border-bottom:1px solid var(--line); color:var(--metal);}
+  table.wg-table tbody tr:last-child td{border-bottom:none;}
+  table.wg-table tbody tr:hover{background:rgba(181,80,42,0.06);}
+  table.wg-table tfoot td{padding:13px 14px; font-family:'Oswald',sans-serif; letter-spacing:0.8px; text-transform:uppercase; font-size:12.5px; background:#1c1a17; border-top:1px solid var(--line);}
+  .wg-mono{font-family:'JetBrains Mono',monospace;}
+  .wg-empty{padding:30px 14px; text-align:center; color:var(--metal-dim); font-size:13px; background:#1c1a17;}
+  .wg-icon-btn{background:none; border:none; color:var(--metal-dim); cursor:pointer; padding:4px; border-radius:3px;}
+  .wg-icon-btn:hover{color:var(--rust-light); background:rgba(181,80,42,0.12);}
+  .wg-icon-btn svg{width:15px; height:15px; display:block;}
+  .wg-badge{display:inline-flex; align-items:center; gap:5px; font-family:'Oswald',sans-serif; font-size:10.5px; letter-spacing:1px; text-transform:uppercase; padding:4px 9px; border-radius:2px;}
+  .wg-badge.due{background:rgba(232,169,58,0.15); color:var(--hazard); border:1px solid rgba(232,169,58,0.4);}
+  .wg-badge.paid{background:rgba(92,138,99,0.18); color:#7fbf8a; border:1px solid rgba(92,138,99,0.45);}
+  .wg-odo-row{display:flex; align-items:center; justify-content:space-between; margin-top:2px;}
+  .wg-odometer{display:flex; gap:2px; background:var(--ink); padding:6px 8px; border-radius:3px; border:1px solid #3d3831; box-shadow:inset 0 2px 4px rgba(0,0,0,0.5);}
+  .wg-odo-digit{font-family:'JetBrains Mono',monospace; font-weight:700; font-size:18px; color:var(--hazard); background:#0b0a09; width:16px; text-align:center; border-radius:2px; overflow:hidden; display:inline-block; text-shadow:0 0 6px rgba(232,169,58,0.35);}
+  .wg-odo-digit.flip{animation:flipdigit .35s ease;}
+  .wg-odo-sep{color:var(--metal-dim); font-family:'JetBrains Mono',monospace; font-size:14px; align-self:center; padding:0 1px;}
+  @keyframes flipdigit{0%{transform:rotateX(90deg); opacity:0;} 60%{transform:rotateX(-12deg);} 100%{transform:rotateX(0); opacity:1;}}
+  .wg-section{display:none; animation:fadein .25s ease;}
+  .wg-section.active{display:block;}
+  @keyframes fadein{from{opacity:0; transform:translateY(6px);} to{opacity:1; transform:translateY(0);}}
+  .wg-group-header{display:flex; align-items:center; justify-content:space-between; gap:10px; padding:10px 14px; font-family:'Oswald',sans-serif; font-size:12px; letter-spacing:1px; text-transform:uppercase; border-bottom:1px solid var(--line);}
+  .wg-group-swatch{width:9px; height:9px; border-radius:2px; display:inline-block; margin-right:8px;}
+  @media (max-width:640px){
+    .wg-grid, .wg-grid-3{grid-template-columns:1fr;}
+    .wg-panel{padding:20px 16px;}
+    .wg-topbar{flex-direction:column; align-items:flex-start;}
+    .wg-tabs{width:100%;}
+    .wg-tab{flex:1; justify-content:center; padding:11px 8px 9px; font-size:11px;}
+  }
+</style>
+</head>
+<body>
+<div class="wg-root">
+  <div class="wg-shell">
+
+    <div class="wg-topbar">
+      <div style="display:flex; align-items:center; gap:14px;">
+        <div class="wg-brand-plate">
+          <span class="bolt tl"></span><span class="bolt br"></span>
+          <div class="wg-wordmark">writing<span>ale</span></div>
+          <div class="wg-tagline">Work Order System</div>
+        </div>
+        <div class="wg-status-pill"><span class="wg-status-dot" id="sync-dot"></span><span id="sync-label">synced</span></div>
+      </div>
+      <div class="wg-tabs">
+        <div class="wg-tab active" data-tab="invoice">
+          <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M9 2h6l1 3H8l1-3z"/><path d="M7 5h10l1 17H6L7 5z"/><path d="M9 10h6M9 14h6"/></svg>
+          New Invoice
+        </div>
+        <div class="wg-tab" data-tab="clients">
+          <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M3 20a5 5 0 0110 0"/><circle cx="8" cy="8" r="4"/><path d="M16 3.5a4 4 0 010 8"/><path d="M14 20a5 5 0 017-4.5"/></svg>
+          Client Directory
+        </div>
+        <div class="wg-tab" data-tab="payments">
+          <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><rect x="2" y="6" width="20" height="13" rx="1.5"/><path d="M2 10h20"/><path d="M6 15h4"/></svg>
+          Payment Mgmt
+        </div>
+      </div>
+    </div>
+    <div class="wg-hazard"></div>
+
+    <!-- ===================== NEW INVOICE ===================== -->
+    <div class="wg-section active" id="section-invoice">
+      <div class="wg-panel">
+        <span class="rivet tl"></span><span class="rivet tr"></span><span class="rivet bl"></span><span class="rivet br"></span>
+        <div class="wg-panel-head">
+          <div class="wg-panel-eyebrow">Order Intake</div>
+          <div class="wg-panel-title">Generate Invoice</div>
+          <div class="wg-panel-sub">Log delivered work and batch it into an invoice</div>
+        </div>
+
+        <div class="wg-grid-3">
+          <div class="wg-field">
+            <label class="wg-label">Client (optional, autofills below)</label>
+            <select class="wg-select" id="inv-client"><option value="">— Type manually —</option></select>
+          </div>
+          <div class="wg-field">
+            <label class="wg-label">Person(s) of Interest</label>
+            <input class="wg-input" id="inv-person" placeholder="e.g. Jayanti Gala">
+          </div>
+          <div class="wg-field">
+            <label class="wg-label">Company / Theme</label>
+            <input class="wg-input" id="inv-company" placeholder="e.g. Zalani">
+          </div>
+        </div>
+
+        <div class="wg-grid">
+          <div class="wg-field">
+            <label class="wg-label">Topic / Topic Code</label>
+            <input class="wg-input" id="inv-topic" placeholder="e.g. Customer-Hearted">
+          </div>
+          <div class="wg-field">
+            <label class="wg-label">Contact</label>
+            <input class="wg-input" id="inv-contact" placeholder="Email, phone or handle">
+          </div>
+        </div>
+
+        <div class="wg-field">
+          <label class="wg-label">Communication Platform</label>
+          <div class="wg-toggle-row" id="inv-platform">
+            <div class="wg-toggle active" data-val="Email">E-mail</div>
+            <div class="wg-toggle" data-val="WhatsApp">WhatsApp</div>
+            <div class="wg-toggle" data-val="Telegram">Telegram</div>
+          </div>
+        </div>
+
+        <div class="wg-grid-3">
+          <div class="wg-field">
+            <label class="wg-label">Date of Delivery</label>
+            <input class="wg-input" type="date" id="inv-deliverydate">
+          </div>
+          <div class="wg-field">
+            <label class="wg-label">Order Scope</label>
+            <div class="wg-toggle-row" id="inv-scope">
+              <div class="wg-toggle active" data-val="Single Order">Single</div>
+              <div class="wg-toggle" data-val="Bulk Order">Bulk</div>
+            </div>
+          </div>
+          <div class="wg-field">
+            <label class="wg-label">Item Price: <span class="wg-mono" id="price-preview">Rs. 0</span></label>
+            <input class="wg-input" type="number" min="0" id="inv-price" placeholder="0">
+          </div>
+        </div>
+
+        <button class="wg-btn wg-btn-steel wg-btn-block" id="btn-add-item">+ Add to Invoice</button>
+
+        <div style="margin-top:22px;">
+          <div class="wg-panel-eyebrow" style="margin-bottom:10px;">Order Items</div>
+          <div class="wg-table-wrap">
+            <table class="wg-table">
+              <thead><tr><th>#</th><th>Person</th><th>Company/Theme</th><th>Topic</th><th>Delivery</th><th>Price</th><th></th></tr></thead>
+              <tbody id="items-tbody"></tbody>
+              <tfoot><tr><td colspan="5">Total</td><td colspan="2"><div class="wg-odometer" id="items-odometer"></div></td></tr></tfoot>
+            </table>
+          </div>
+        </div>
+
+        <div class="wg-grid" style="margin-top:20px;">
+          <div class="wg-field">
+            <label class="wg-label">Invoice Details</label>
+            <input class="wg-input" id="inv-details" placeholder="e.g. Jul 26 Invoice">
+            <div class="wg-hint">Auto-suggested — rename to group with an existing batch</div>
+          </div>
+          <div class="wg-field">
+            <label class="wg-label">Due Date</label>
+            <input class="wg-input" type="date" id="inv-duedate">
+            <div class="wg-hint">Auto-filled to +6 days</div>
+          </div>
+        </div>
+
+        <button class="wg-btn wg-btn-block" id="btn-generate">Generate Invoice</button>
+      </div>
+    </div>
+
+    <!-- ===================== CLIENT DIRECTORY ===================== -->
+    <div class="wg-section" id="section-clients">
+      <div class="wg-panel">
+        <span class="rivet tl"></span><span class="rivet tr"></span><span class="rivet bl"></span><span class="rivet br"></span>
+        <div class="wg-panel-head">
+          <div class="wg-panel-eyebrow">Roster</div>
+          <div class="wg-panel-title">Client Directory</div>
+          <div class="wg-panel-sub">Manage and track your writing clients</div>
+        </div>
+        <div class="wg-panel-eyebrow" style="margin-bottom:10px;">Add New Client</div>
+        <div class="wg-grid-3">
+          <div class="wg-field"><label class="wg-label">ID Code</label><input class="wg-input" id="new-client-id" placeholder="e.g. A102"></div>
+          <div class="wg-field"><label class="wg-label">Name</label><input class="wg-input" id="new-client-name" placeholder="Client name"></div>
+          <div class="wg-field"><label class="wg-label">Company / Theme</label><input class="wg-input" id="new-client-company" placeholder="Optional"></div>
+        </div>
+        <div class="wg-field"><label class="wg-label">Contact</label><input class="wg-input" id="new-client-contact" placeholder="Optional"></div>
+        <button class="wg-btn" id="btn-register-client">Register Client</button>
+      </div>
+
+      <div class="wg-panel">
+        <span class="rivet tl"></span><span class="rivet tr"></span><span class="rivet bl"></span><span class="rivet br"></span>
+        <div class="wg-panel-eyebrow" style="margin-bottom:10px;">Existing Clients</div>
+        <div class="wg-table-wrap">
+          <table class="wg-table">
+            <thead><tr><th>ID Code</th><th>Name</th><th>Company/Theme</th><th>Joined</th><th>Orders</th><th>Actions</th></tr></thead>
+            <tbody id="clients-tbody"></tbody>
+          </table>
+        </div>
+      </div>
+    </div>
+
+    <!-- ===================== PAYMENT MANAGEMENT ===================== -->
+    <div class="wg-section" id="section-payments">
+      <div class="wg-panel">
+        <span class="rivet tl"></span><span class="rivet tr"></span><span class="rivet bl"></span><span class="rivet br"></span>
+        <div class="wg-panel-head">
+          <div class="wg-panel-eyebrow">Ledger</div>
+          <div class="wg-panel-title">Payment Management</div>
+          <div class="wg-panel-sub">Track and manage all invoice payments</div>
+        </div>
+
+        <div style="display:flex; justify-content:space-between; align-items:center; flex-wrap:wrap; gap:12px; margin-bottom:18px;">
+          <div class="wg-toggle-row" id="pay-filter" style="max-width:340px;">
+            <div class="wg-toggle active" data-val="all">All Invoices</div>
+            <div class="wg-toggle" data-val="due">Due</div>
+            <div class="wg-toggle" data-val="paid">Paid</div>
+          </div>
+          <button class="wg-btn wg-btn-ghost wg-btn-sm" id="btn-download-xlsx">Download Excel</button>
+        </div>
+
+        <div id="payments-groups"></div>
+      </div>
+    </div>
+
+  </div>
+</div>
+
+<script>
+(function(){
+  const API = ''; // same-origin — set to your deployed URL if hosting the frontend elsewhere
+  const fmt = n => 'Rs. ' + Number(n||0).toLocaleString('en-IN');
+  const todayStr = () => new Date().toISOString().slice(0,10);
+  const addDays = (dateStr, days) => { const d = new Date(dateStr); d.setDate(d.getDate()+days); return d.toISOString().slice(0,10); };
+  const fmtDate = s => s ? new Date(s+'T00:00:00').toLocaleDateString('en-IN',{year:'numeric',month:'short',day:'numeric'}) : '—';
+  const monthLabel = s => { const d = new Date(s); return d.toLocaleDateString('en-IN',{month:'short',year:'2-digit'}) + ' Invoice'; };
+  const GROUP_COLORS = ['#5C7A9E','#7A5C4A','#6E7A5C','#8A6C5C','#5C7A6A','#7A5C74'];
+  const groupColor = label => { let h=0; for(let i=0;i<label.length;i++) h = (h*31 + label.charCodeAt(i)) >>> 0; return GROUP_COLORS[h % GROUP_COLORS.length]; };
+
+  let clients = [];
+  let items = [];
+  let currentItems = [];
+
+  async function api(path, opts){
+    const res = await fetch(API + path, {
+      headers: {'Content-Type':'application/json'},
+      ...opts
+    });
+    if(!res.ok){ const e = await res.json().catch(()=>({error:res.statusText})); throw new Error(e.error||'request failed'); }
+    return res.json();
+  }
+
+  function setSync(ok){
+    document.getElementById('sync-dot').classList.toggle('offline', !ok);
+    document.getElementById('sync-label').textContent = ok ? 'synced' : 'offline';
+  }
+
+  async function refresh(){
+    try{
+      const [c, i] = await Promise.all([ api('/api/clients'), api('/api/items') ]);
+      clients = c.clients; items = i.items;
+      setSync(true);
+      renderAll();
+    }catch(e){
+      console.error(e);
+      setSync(false);
+    }
+  }
+
+  // ---------- tabs ----------
+  document.querySelectorAll('.wg-tab').forEach(tab=>{
+    tab.addEventListener('click', ()=>{
+      document.querySelectorAll('.wg-tab').forEach(t=>t.classList.remove('active'));
+      document.querySelectorAll('.wg-section').forEach(s=>s.classList.remove('active'));
+      tab.classList.add('active');
+      document.getElementById('section-'+tab.dataset.tab).classList.add('active');
+    });
+  });
+
+  function wireToggleGroup(container, onChange){
+    container.querySelectorAll('.wg-toggle').forEach(btn=>{
+      btn.addEventListener('click', ()=>{
+        container.querySelectorAll('.wg-toggle').forEach(b=>b.classList.remove('active'));
+        btn.classList.add('active');
+        if(onChange) onChange();
+      });
+    });
+  }
+  wireToggleGroup(document.getElementById('inv-platform'));
+  wireToggleGroup(document.getElementById('inv-scope'));
+  wireToggleGroup(document.getElementById('pay-filter'), renderPayments);
+  function getActiveToggle(containerId){ return document.querySelector('#'+containerId+' .wg-toggle.active').dataset.val; }
+
+  // ---------- price preview ----------
+  const priceInput = document.getElementById('inv-price');
+  priceInput.addEventListener('input', ()=>{ document.getElementById('price-preview').textContent = fmt(priceInput.value||0); });
+
+  // ---------- dates ----------
+  const deliveryInput = document.getElementById('inv-deliverydate');
+  const dueDateInput = document.getElementById('inv-duedate');
+  const detailsInput = document.getElementById('inv-details');
+  deliveryInput.value = todayStr();
+  dueDateInput.value = addDays(todayStr(),6);
+  detailsInput.value = monthLabel(todayStr());
+  deliveryInput.addEventListener('change', ()=>{ dueDateInput.value = addDays(deliveryInput.value,6); });
+
+  // ---------- client select autofill ----------
+  document.getElementById('inv-client').addEventListener('change', (e)=>{
+    const c = clients.find(x=>x['ID Code']===e.target.value);
+    if(c){
+      document.getElementById('inv-person').value = c.Name || '';
+      document.getElementById('inv-company').value = c['Company/Theme'] || '';
+      document.getElementById('inv-contact').value = c.Contact || '';
+    }
+  });
+
+  // ---------- odometer ----------
+  function renderOdometer(el, amount){
+    const digits = Number(amount||0).toLocaleString('en-IN').split('');
+    const prev = el.dataset.prev || '';
+    el.innerHTML = '';
+    digits.forEach((ch,i)=>{
+      if(ch===','){ const s=document.createElement('span'); s.className='wg-odo-sep'; s.textContent=','; el.appendChild(s); }
+      else { const d=document.createElement('span'); d.className='wg-odo-digit'; d.textContent=ch; if(prev[i]!==ch) d.classList.add('flip'); el.appendChild(d); }
+    });
+    el.dataset.prev = digits.join('');
+  }
+
+  // ---------- client select list ----------
+  function renderClientSelect(){
+    const sel = document.getElementById('inv-client');
+    const current = sel.value;
+    sel.innerHTML = '<option value="">— Type manually —</option>' +
+      clients.map(c=>`<option value="${c['ID Code']}">${c['ID Code']} — ${c.Name}</option>`).join('');
+    sel.value = current;
+  }
+
+  // ---------- staged items ----------
+  document.getElementById('btn-add-item').addEventListener('click', ()=>{
+    const person = document.getElementById('inv-person').value.trim();
+    const company = document.getElementById('inv-company').value.trim();
+    const topic = document.getElementById('inv-topic').value.trim();
+    const price = Number(priceInput.value||0);
+    const deliveryDate = deliveryInput.value;
+    if(!person){ alert('Enter a person of interest.'); return; }
+    if(!topic){ alert('Enter a topic / topic code.'); return; }
+    if(price<=0){ alert('Enter an item price greater than zero.'); return; }
+    currentItems.push({
+      person, company, topic, price, deliveryDate,
+      clientId: document.getElementById('inv-client').value,
+      contact: document.getElementById('inv-contact').value,
+      platform: getActiveToggle('inv-platform'),
+      scope: getActiveToggle('inv-scope'),
+    });
+    document.getElementById('inv-topic').value=''; priceInput.value=''; document.getElementById('price-preview').textContent=fmt(0);
+    renderItemsTable();
+  });
+
+  function renderItemsTable(){
+    const tbody = document.getElementById('items-tbody');
+    if(currentItems.length===0){
+      tbody.innerHTML = `<tr><td colspan="7" class="wg-empty">No items added — add a delivered piece above to build the invoice.</td></tr>`;
+    } else {
+      tbody.innerHTML = currentItems.map((it,i)=>`
+        <tr>
+          <td class="wg-mono">${i+1}</td><td>${it.person}</td><td>${it.company||'—'}</td><td>${it.topic}</td>
+          <td class="wg-mono">${fmtDate(it.deliveryDate)}</td><td class="wg-mono">${fmt(it.price)}</td>
+          <td><button class="wg-icon-btn" data-idx="${i}" title="Remove">
+            <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M3 6h18M8 6V4h8v2M6 6l1 14h10l1-14"/></svg>
+          </button></td>
+        </tr>`).join('');
+      tbody.querySelectorAll('.wg-icon-btn').forEach(btn=>{
+        btn.addEventListener('click', ()=>{ currentItems.splice(Number(btn.dataset.idx),1); renderItemsTable(); });
+      });
+    }
+    renderOdometer(document.getElementById('items-odometer'), currentItems.reduce((s,it)=>s+it.price,0));
+  }
+
+  // ---------- generate invoice ----------
+  document.getElementById('btn-generate').addEventListener('click', async ()=>{
+    if(currentItems.length===0){ alert('Add at least one item to the invoice.'); return; }
+    const invoiceDetails = detailsInput.value.trim() || monthLabel(todayStr());
+    const dueDate = dueDateInput.value;
+    const btn = document.getElementById('btn-generate');
+    btn.disabled = true; btn.textContent = 'Saving…';
+    try{
+      await api('/api/items', { method:'POST', body: JSON.stringify({ rows: currentItems, invoiceDetails, dueDate }) });
+      currentItems = [];
+      renderItemsTable();
+      document.getElementById('inv-person').value='';
+      document.getElementById('inv-company').value='';
+      document.getElementById('inv-contact').value='';
+      deliveryInput.value = todayStr();
+      dueDateInput.value = addDays(todayStr(),6);
+      detailsInput.value = monthLabel(todayStr());
+      await refresh();
+      alert('Invoice "'+invoiceDetails+'" saved to the workbook.');
+    }catch(e){ alert('Could not save: '+e.message); }
+    btn.disabled = false; btn.textContent = 'Generate Invoice';
+  });
+
+  // ---------- client directory ----------
+  document.getElementById('btn-register-client').addEventListener('click', async ()=>{
+    const id = document.getElementById('new-client-id').value.trim();
+    const name = document.getElementById('new-client-name').value.trim();
+    const company = document.getElementById('new-client-company').value.trim();
+    const contact = document.getElementById('new-client-contact').value.trim();
+    if(!id || !name){ alert('Enter both an ID code and a name.'); return; }
+    try{
+      await api('/api/clients', { method:'POST', body: JSON.stringify({ id, name, company, contact }) });
+      document.getElementById('new-client-id').value='';
+      document.getElementById('new-client-name').value='';
+      document.getElementById('new-client-company').value='';
+      document.getElementById('new-client-contact').value='';
+      await refresh();
+    }catch(e){ alert('Could not register client: '+e.message); }
+  });
+
+  function renderClients(){
+    const tbody = document.getElementById('clients-tbody');
+    if(clients.length===0){ tbody.innerHTML = `<tr><td colspan="6" class="wg-empty">No clients yet — register your first client above.</td></tr>`; return; }
+    tbody.innerHTML = clients.map(c=>`
+      <tr>
+        <td class="wg-mono">${c['ID Code']}</td><td>${c.Name}</td><td>${c['Company/Theme']||'—'}</td>
+        <td class="wg-mono">${fmtDate(c.Joined)}</td><td class="wg-mono">${c.Orders||0}</td>
+        <td><button class="wg-icon-btn" data-id="${c['ID Code']}" title="Delete client">
+          <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M3 6h18M8 6V4h8v2M6 6l1 14h10l1-14"/></svg>
+        </button></td>
+      </tr>`).join('');
+    tbody.querySelectorAll('.wg-icon-btn').forEach(btn=>{
+      btn.addEventListener('click', async ()=>{
+        if(!confirm('Remove this client from the directory?')) return;
+        try{ await api('/api/clients', { method:'DELETE', body: JSON.stringify({ id: btn.dataset.id }) }); await refresh(); }
+        catch(e){ alert('Could not delete: '+e.message); }
+      });
+    });
+  }
+
+  // ---------- payments (grouped by Invoice Details) ----------
+  function renderPayments(){
+    const filter = getActiveToggle('pay-filter');
+    const wrap = document.getElementById('payments-groups');
+    let rows = items;
+    if(filter==='due') rows = rows.filter(r=>!r['Date of Payment']);
+    if(filter==='paid') rows = rows.filter(r=>!!r['Date of Payment']);
+    if(rows.length===0){
+      wrap.innerHTML = `<div class="wg-table-wrap"><div class="wg-empty">No invoices yet — generate one from the New Invoice tab.</div></div>`;
+      return;
+    }
+    const groups = {};
+    rows.forEach(r=>{ const key = r['Invoice Details']||'(no batch)'; (groups[key]=groups[key]||[]).push(r); });
+    const order = Object.keys(groups).sort().reverse();
+    wrap.innerHTML = order.map(label=>{
+      const rs = groups[label];
+      const total = rs.reduce((s,r)=>s+Number(r.Price||0),0);
+      const allPaid = rs.every(r=>!!r['Date of Payment']);
+      const color = groupColor(label);
+      return `
+        <div class="wg-table-wrap" style="margin-bottom:16px;">
+          <div class="wg-group-header" style="background:${color}22; color:${color};">
+            <span><span class="wg-group-swatch" style="background:${color};"></span>${label} · ${rs.length} item${rs.length>1?'s':''} · <span class="wg-mono">${fmt(total)}</span></span>
+            <button class="wg-btn wg-btn-ghost wg-btn-sm mark-batch" data-label="${label}" ${allPaid?'disabled':''}>${allPaid?'All Paid ✓':'Mark Batch Paid'}</button>
+          </div>
+          <table class="wg-table">
+            <thead><tr><th>SR</th><th>Person</th><th>Company/Theme</th><th>Topic</th><th>Delivery</th><th>Payment</th><th>Price</th><th>Status</th><th></th></tr></thead>
+            <tbody>
+              ${rs.map(r=>`
+                <tr>
+                  <td class="wg-mono">${r['SR. NO.']}</td>
+                  <td>${r['PERSON(S) OF INTEREST']}</td>
+                  <td>${r['COMPANY/THEME']||'—'}</td>
+                  <td>${r['TOPIC/TOPIC CODE']}</td>
+                  <td class="wg-mono">${fmtDate(r['Date Of Delivery'])}</td>
+                  <td class="wg-mono">${r['Date of Payment'] ? fmtDate(r['Date of Payment']) : '—'}</td>
+                  <td class="wg-mono">${fmt(r.Price)}</td>
+                  <td><span class="wg-badge ${r['Date of Payment']?'paid':'due'}">${r['Date of Payment']?'Paid':'Due'}</span></td>
+                  <td>${r['Date of Payment'] ? '' : `<button class="wg-btn wg-btn-ghost wg-btn-sm mark-row" data-sr="${r['SR. NO.']}">Mark Paid</button>`}</td>
+                </tr>`).join('')}
+            </tbody>
+          </table>
+        </div>`;
+    }).join('');
+
+    wrap.querySelectorAll('.mark-row').forEach(btn=>{
+      btn.addEventListener('click', async ()=>{
+        try{ await api('/api/items', { method:'PATCH', body: JSON.stringify({ srNo: btn.dataset.sr, updates:{'Date of Payment': todayStr()} }) }); await refresh(); }
+        catch(e){ alert('Could not update: '+e.message); }
+      });
+    });
+    wrap.querySelectorAll('.mark-batch').forEach(btn=>{
+      btn.addEventListener('click', async ()=>{
+        try{ await api('/api/items', { method:'PATCH', body: JSON.stringify({ invoiceDetails: btn.dataset.label, updates:{'Date of Payment': todayStr()} }) }); await refresh(); }
+        catch(e){ alert('Could not update: '+e.message); }
+      });
+    });
+  }
+
+  document.getElementById('btn-download-xlsx').addEventListener('click', ()=>{
+    window.open((API||'') + '/api/download', '_blank');
+  });
+
+  function renderAll(){
+    renderClientSelect();
+    renderItemsTable();
+    renderClients();
+    renderPayments();
+  }
+
+  // keep every tab fresh: on load, after focus, and on an interval
+  refresh();
+  window.addEventListener('focus', refresh);
+  setInterval(refresh, 20000);
+})();
+</script>
+</body>
+</html>
