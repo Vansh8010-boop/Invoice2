@@ -294,7 +294,7 @@
   // The anon key is safe to expose here: it can only READ (see RLS policies
   // in supabase/schema.sql), and all writes go through your own /api routes.
   const SUPABASE_URL = 'https://dmxlygstdrpvwzcxlqqk.supabase.co/rest/v1/';
-  const SUPABASE_ANON_KEY = 'eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZSIsInJlZiI6ImRteGx5Z3N0ZHJwdnd6Y3hscXFrIiwicm9sZSI6ImFub24iLCJpYXQiOjE3ODU1NjY4NzcsImV4cCI6MjEwMTE0Mjg3N30.IHe_ABZ07zxlnNzqwXlzRKVlmTKD0QsWZzfvAFVQMMc';
+  const SUPABASE_ANON_KEY = 'sb_publishable_OdN-CYTnOu1wIpHFZv3KpQ_lEHk8Hg4';
   const sb = (SUPABASE_URL.includes('YOUR-PROJECT') || !window.supabase)
     ? null
     : window.supabase.createClient(SUPABASE_URL, SUPABASE_ANON_KEY);
