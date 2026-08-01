@@ -1,13 +1,13 @@
 {
   "name": "writingale-backend",
-  "version": "1.0.0",
+  "version": "2.0.0",
   "private": true,
-  "description": "Serverless backend for writingale — stores all invoice data in a real .xlsx workbook via Vercel Blob storage.",
+  "description": "Serverless backend for writingale — Supabase Postgres as the source of truth, with real-time sync across admins.",
   "scripts": {
     "dev": "vercel dev"
   },
   "dependencies": {
-    "@vercel/blob": "^1.0.0",
+    "@supabase/supabase-js": "^2.45.0",
     "xlsx": "^0.18.5"
   }
 }

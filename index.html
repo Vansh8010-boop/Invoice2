@@ -285,9 +285,20 @@
   </div>
 </div>
 
+<script src="https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2/dist/umd/supabase.js"></script>
 <script>
 (function(){
   const API = ''; // same-origin — set to your deployed URL if hosting the frontend elsewhere
+
+  // ---- fill these in from your Supabase project's Settings → API page ----
+  // The anon key is safe to expose here: it can only READ (see RLS policies
+  // in supabase/schema.sql), and all writes go through your own /api routes.
+  const SUPABASE_URL = 'https://YOUR-PROJECT.supabase.co';
+  const SUPABASE_ANON_KEY = 'YOUR-ANON-PUBLIC-KEY';
+  const sb = (SUPABASE_URL.includes('YOUR-PROJECT') || !window.supabase)
+    ? null
+    : window.supabase.createClient(SUPABASE_URL, SUPABASE_ANON_KEY);
+
   const fmt = n => 'Rs. ' + Number(n||0).toLocaleString('en-IN');
   const todayStr = () => new Date().toISOString().slice(0,10);
   const addDays = (dateStr, days) => { const d = new Date(dateStr); d.setDate(d.getDate()+days); return d.toISOString().slice(0,10); };
@@ -309,21 +320,30 @@
     return res.json();
   }
 
-  function setSync(ok){
+  function setSync(ok, mode){
     document.getElementById('sync-dot').classList.toggle('offline', !ok);
-    document.getElementById('sync-label').textContent = ok ? 'synced' : 'offline';
+    document.getElementById('sync-label').textContent = !ok ? 'offline' : (mode || 'synced');
   }
 
   async function refresh(){
     try{
       const [c, i] = await Promise.all([ api('/api/clients'), api('/api/items') ]);
       clients = c.clients; items = i.items;
-      setSync(true);
+      setSync(true, sb ? 'live' : 'synced');
       renderAll();
     }catch(e){
       console.error(e);
       setSync(false);
     }
+  }
+
+  // Real-time: any admin's change (add client, generate invoice, mark paid)
+  // pushes to every open tab within about a second — no manual refresh needed.
+  if(sb){
+    sb.channel('writingale-changes')
+      .on('postgres_changes', {event:'*', schema:'public', table:'invoice_log'}, refresh)
+      .on('postgres_changes', {event:'*', schema:'public', table:'clients'}, refresh)
+      .subscribe();
   }
 
   // ---------- tabs ----------
@@ -365,11 +385,11 @@
 
   // ---------- client select autofill ----------
   document.getElementById('inv-client').addEventListener('change', (e)=>{
-    const c = clients.find(x=>x['ID Code']===e.target.value);
+    const c = clients.find(x=>x.id_code===e.target.value);
     if(c){
-      document.getElementById('inv-person').value = c.Name || '';
-      document.getElementById('inv-company').value = c['Company/Theme'] || '';
-      document.getElementById('inv-contact').value = c.Contact || '';
+      document.getElementById('inv-person').value = c.name || '';
+      document.getElementById('inv-company').value = c.company_theme || '';
+      document.getElementById('inv-contact').value = c.contact || '';
     }
   });
 
@@ -390,7 +410,7 @@
     const sel = document.getElementById('inv-client');
     const current = sel.value;
     sel.innerHTML = '<option value="">— Type manually —</option>' +
-      clients.map(c=>`<option value="${c['ID Code']}">${c['ID Code']} — ${c.Name}</option>`).join('');
+      clients.map(c=>`<option value="${c.id_code}">${c.id_code} — ${c.name}</option>`).join('');
     sel.value = current;
   }
 
@@ -480,9 +500,9 @@
     if(clients.length===0){ tbody.innerHTML = `<tr><td colspan="6" class="wg-empty">No clients yet — register your first client above.</td></tr>`; return; }
     tbody.innerHTML = clients.map(c=>`
       <tr>
-        <td class="wg-mono">${c['ID Code']}</td><td>${c.Name}</td><td>${c['Company/Theme']||'—'}</td>
-        <td class="wg-mono">${fmtDate(c.Joined)}</td><td class="wg-mono">${c.Orders||0}</td>
-        <td><button class="wg-icon-btn" data-id="${c['ID Code']}" title="Delete client">
+        <td class="wg-mono">${c.id_code}</td><td>${c.name}</td><td>${c.company_theme||'—'}</td>
+        <td class="wg-mono">${fmtDate(c.joined)}</td><td class="wg-mono">${c.orders||0}</td>
+        <td><button class="wg-icon-btn" data-id="${c.id_code}" title="Delete client">
           <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M3 6h18M8 6V4h8v2M6 6l1 14h10l1-14"/></svg>
         </button></td>
       </tr>`).join('');
@@ -500,19 +520,19 @@
     const filter = getActiveToggle('pay-filter');
     const wrap = document.getElementById('payments-groups');
     let rows = items;
-    if(filter==='due') rows = rows.filter(r=>!r['Date of Payment']);
-    if(filter==='paid') rows = rows.filter(r=>!!r['Date of Payment']);
+    if(filter==='due') rows = rows.filter(r=>!r.date_of_payment);
+    if(filter==='paid') rows = rows.filter(r=>!!r.date_of_payment);
     if(rows.length===0){
       wrap.innerHTML = `<div class="wg-table-wrap"><div class="wg-empty">No invoices yet — generate one from the New Invoice tab.</div></div>`;
       return;
     }
     const groups = {};
-    rows.forEach(r=>{ const key = r['Invoice Details']||'(no batch)'; (groups[key]=groups[key]||[]).push(r); });
+    rows.forEach(r=>{ const key = r.invoice_details||'(no batch)'; (groups[key]=groups[key]||[]).push(r); });
     const order = Object.keys(groups).sort().reverse();
     wrap.innerHTML = order.map(label=>{
       const rs = groups[label];
-      const total = rs.reduce((s,r)=>s+Number(r.Price||0),0);
-      const allPaid = rs.every(r=>!!r['Date of Payment']);
+      const total = rs.reduce((s,r)=>s+Number(r.price||0),0);
+      const allPaid = rs.every(r=>!!r.date_of_payment);
       const color = groupColor(label);
       return `
         <div class="wg-table-wrap" style="margin-bottom:16px;">
@@ -525,15 +545,15 @@
             <tbody>
               ${rs.map(r=>`
                 <tr>
-                  <td class="wg-mono">${r['SR. NO.']}</td>
-                  <td>${r['PERSON(S) OF INTEREST']}</td>
-                  <td>${r['COMPANY/THEME']||'—'}</td>
-                  <td>${r['TOPIC/TOPIC CODE']}</td>
-                  <td class="wg-mono">${fmtDate(r['Date Of Delivery'])}</td>
-                  <td class="wg-mono">${r['Date of Payment'] ? fmtDate(r['Date of Payment']) : '—'}</td>
-                  <td class="wg-mono">${fmt(r.Price)}</td>
-                  <td><span class="wg-badge ${r['Date of Payment']?'paid':'due'}">${r['Date of Payment']?'Paid':'Due'}</span></td>
-                  <td>${r['Date of Payment'] ? '' : `<button class="wg-btn wg-btn-ghost wg-btn-sm mark-row" data-sr="${r['SR. NO.']}">Mark Paid</button>`}</td>
+                  <td class="wg-mono">${r.sr_no}</td>
+                  <td>${r.person}</td>
+                  <td>${r.company_theme||'—'}</td>
+                  <td>${r.topic}</td>
+                  <td class="wg-mono">${fmtDate(r.date_of_delivery)}</td>
+                  <td class="wg-mono">${r.date_of_payment ? fmtDate(r.date_of_payment) : '—'}</td>
+                  <td class="wg-mono">${fmt(r.price)}</td>
+                  <td><span class="wg-badge ${r.date_of_payment?'paid':'due'}">${r.date_of_payment?'Paid':'Due'}</span></td>
+                  <td>${r.date_of_payment ? '' : `<button class="wg-btn wg-btn-ghost wg-btn-sm mark-row" data-sr="${r.sr_no}">Mark Paid</button>`}</td>
                 </tr>`).join('')}
             </tbody>
           </table>
@@ -568,7 +588,7 @@
   // keep every tab fresh: on load, after focus, and on an interval
   refresh();
   window.addEventListener('focus', refresh);
-  setInterval(refresh, 20000);
+  setInterval(refresh, sb ? 60000 : 20000); // fallback only — Realtime does the real work
 })();
 </script>
 </body>

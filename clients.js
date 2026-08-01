@@ -1,10 +1,4 @@
-const {
-  loadWorkbook,
-  saveWorkbook,
-  sheetToObjects,
-  objectsToSheet,
-  CLIENT_HEADERS,
-} = require('../lib/workbook');
+const { supabaseAdmin } = require('../lib/supabase');
 
 module.exports = async function handler(req, res) {
   res.setHeader('Access-Control-Allow-Origin', '*');
@@ -13,39 +7,36 @@ module.exports = async function handler(req, res) {
   if (req.method === 'OPTIONS') return res.status(200).end();
 
   try {
-    const wb = await loadWorkbook();
-    let clients = sheetToObjects(wb, 'Clients');
-
     if (req.method === 'GET') {
-      return res.status(200).json({ clients });
+      const { data, error } = await supabaseAdmin.from('clients').select('*').order('joined');
+      if (error) throw error;
+      return res.status(200).json({ clients: data });
     }
 
     if (req.method === 'POST') {
       const { id, name, company, contact } = req.body || {};
       if (!id || !name) return res.status(400).json({ error: 'id and name are required' });
-      if (clients.some((c) => c['ID Code'] === id)) {
-        return res.status(409).json({ error: 'that ID code is already in use' });
-      }
-      clients.push({
-        'ID Code': id,
-        Name: name,
-        'Company/Theme': company || '',
-        Contact: contact || '',
-        Joined: new Date().toISOString().slice(0, 10),
-        Orders: 0,
-      });
-      objectsToSheet(wb, 'Clients', CLIENT_HEADERS, clients);
-      await saveWorkbook(wb);
-      // Also update the Invoice Log sheet's sheet-order so both tabs stay in sync.
-      return res.status(201).json({ clients });
+
+      const { data: existing } = await supabaseAdmin
+        .from('clients')
+        .select('id_code')
+        .eq('id_code', id)
+        .maybeSingle();
+      if (existing) return res.status(409).json({ error: 'that ID code is already in use' });
+
+      const { data, error } = await supabaseAdmin
+        .from('clients')
+        .insert({ id_code: id, name, company_theme: company || '', contact: contact || '' })
+        .select();
+      if (error) throw error;
+      return res.status(201).json({ clients: data });
     }
 
     if (req.method === 'DELETE') {
       const { id } = req.body || {};
-      clients = clients.filter((c) => c['ID Code'] !== id);
-      objectsToSheet(wb, 'Clients', CLIENT_HEADERS, clients);
-      await saveWorkbook(wb);
-      return res.status(200).json({ clients });
+      const { error } = await supabaseAdmin.from('clients').delete().eq('id_code', id);
+      if (error) throw error;
+      return res.status(200).json({ ok: true });
     }
 
     res.setHeader('Allow', ['GET', 'POST', 'DELETE']);

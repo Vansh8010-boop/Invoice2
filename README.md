@@ -1,88 +1,92 @@
-# writingale — backend
+# writingale — backend (Supabase edition)
 
-A real backend for the writingale invoice tool. All data lives in one genuine
-`.xlsx` workbook (two sheets: **Invoice Log** and **Clients**) so you can open
-it in Excel any time — there's a **Download Excel** button in the Payment
-Management tab for exactly that.
+The source of truth is now a real Postgres database on Supabase — two
+tables, `clients` and `invoice_log` — instead of an Excel file. You still
+get a genuine `.xlsx` download whenever you want one (Payment Management →
+"Download Excel"); it's just generated on demand from live data rather than
+being the storage format itself.
 
-## Why it's not a plain local file
+## Why this is better for multiple admins
 
-Vercel's serverless functions don't have a persistent local disk — anything
-written to disk during one request disappears before the next request runs.
-So instead of writing to `workbook.xlsx` directly in production, this backend
-stores that same `.xlsx` file in **Vercel Blob storage** and rewrites it on
-every change. To you and to Excel, it's still just one spreadsheet file; it's
-only the physical location that's different.
+- Every change touches one row, not a whole file — no more "download →
+  edit → re-upload the entire workbook" on every single update.
+- Postgres handles concurrent writes safely (no silent lost updates).
+- **Real-time**: Supabase Realtime pushes every change to every open browser
+  tab within about a second. No polling, no manual refresh — if your friend
+  marks something paid, you see it update live.
 
-If you run this outside Vercel (locally, or on a plain server with a real
-disk), it automatically falls back to writing `data/workbook.xlsx` directly —
-no Blob store needed. See "Running locally" below.
+## Setup
 
-## What's in the workbook
+### 1. Create the Supabase project & schema
+1. Create a project at [supabase.com](https://supabase.com).
+2. Go to **SQL Editor**, paste the contents of `supabase/schema.sql`, and run
+   it. This creates both tables, locks them down with Row Level Security
+   (read-only for the public key; writes only via your server), adds an
+   atomic order-count function, and turns on Realtime for both tables.
+3. Go to **Project Settings → API** and copy three values: the **Project
+   URL**, the **anon public key**, and the **service_role key**.
 
-**Invoice Log** sheet — one row per delivered piece of work, matching your
-existing spreadsheet exactly for the first 8 columns:
-
+### 2. Configure the backend (server-side, secret)
+Set these as environment variables in your Vercel project (Settings →
+Environment Variables):
 ```
-SR. NO. | PERSON(S) OF INTEREST | COMPANY/THEME | TOPIC/TOPIC CODE |
-Date Of Delivery | Date of Payment | Price | Invoice Details
+SUPABASE_URL=https://your-project.supabase.co
+SUPABASE_SERVICE_ROLE_KEY=your-service-role-key   # keep this secret!
 ```
 
-A few extra columns ride along after that (`Client ID`, `Contact`,
-`Platform`, `Scope`, `Due Date`) so the app keeps all its existing features —
-they won't disturb the look of the first 8 columns in Excel.
+### 3. Configure the frontend (public, safe to expose)
+Open `index.html` and fill in the two constants near the top of the
+`<script>` block:
+```js
+const SUPABASE_URL = 'https://your-project.supabase.co';
+const SUPABASE_ANON_KEY = 'your-anon-public-key';
+```
+The anon key is designed to be public — it can only *read*, thanks to the
+Row Level Security policies in `schema.sql`. All writes (adding a client,
+generating an invoice, marking something paid) go through your own `/api`
+routes, authenticated with the secret service role key on the server, so
+this is safe even though it's visible in the page source.
 
-**Clients** sheet — your client directory (`ID Code`, `Name`,
-`Company/Theme`, `Contact`, `Joined`, `Orders`).
-
-Both sheets live in the same file and are always rewritten together, so
-adding a client or generating an invoice keeps every tab — both the app's UI
-tabs and the workbook's own sheet tabs — in sync.
-
-## Deploying to Vercel
-
-1. Push this folder to a GitHub repo (or run `vercel` from inside it).
-2. Import the repo in the Vercel dashboard, or run:
-   ```
-   npm i -g vercel
-   vercel
-   ```
-3. In your Vercel project → **Storage** → **Create Database** → **Blob**,
-   create a store and connect it to this project. Vercel will automatically
-   set `BLOB_READ_WRITE_TOKEN` for you — you don't need to copy it manually.
-4. Redeploy (`vercel --prod`). Visit your deployment URL — the app and API
-   are served from the same domain, so nothing else needs configuring.
-
-## Running locally
-
+### 4. Deploy
 ```
 npm install
-npm run dev     # runs `vercel dev`, needs the Vercel CLI logged in
+vercel --prod
 ```
-Without a Blob store connected, it reads/writes `data/workbook.xlsx` on
-disk automatically — handy for trying things out before deploying.
+That's it — no Blob store, no persistent disk needed.
+
+## What's in each table
+
+**`invoice_log`** — one row per delivered piece of work:
+`sr_no` (auto), `person`, `company_theme`, `topic`, `date_of_delivery`,
+`date_of_payment`, `price`, `invoice_details`, `client_id`, `contact`,
+`platform`, `scope`, `due_date`.
+
+**`clients`** — the directory: `id_code`, `name`, `company_theme`,
+`contact`, `joined`, `orders`.
+
+The `/api/download` route reads both tables and assembles them into an
+`.xlsx` with the exact same column headers as your original spreadsheet
+(extra app-only columns ride along after "Invoice Details").
 
 ## API reference
 
 | Method | Path            | Purpose                                              |
-|--------|-----------------|-------------------------------------------------------|
-| GET    | `/api/items`    | All invoice-log rows                                  |
-| POST   | `/api/items`    | Add one or more rows as one invoice batch              |
-| PATCH  | `/api/items`    | Mark a row (`srNo`) or a whole batch (`invoiceDetails`) as paid, or edit fields |
-| DELETE | `/api/items`    | Remove a row (`srNo`)                                  |
-| GET    | `/api/clients`  | All clients                                            |
-| POST   | `/api/clients`  | Register a new client                                  |
-| DELETE | `/api/clients`  | Remove a client (`id`)                                 |
-| GET    | `/api/download` | Download the live workbook as `writingale-data.xlsx`   |
+|--------|-----------------|---------------------------------------------------------|
+| GET    | `/api/items`    | All invoice-log rows                                     |
+| POST   | `/api/items`    | Add one or more rows as one invoice batch                 |
+| PATCH  | `/api/items`    | Mark a row (`srNo`) or a whole batch (`invoiceDetails`) paid, or edit fields |
+| DELETE | `/api/items`    | Remove a row (`srNo`)                                     |
+| GET    | `/api/clients`  | All clients                                               |
+| POST   | `/api/clients`  | Register a new client                                     |
+| DELETE | `/api/clients`  | Remove a client (`id`)                                    |
+| GET    | `/api/download` | Download a fresh `.xlsx` built from current data          |
 
-## A note on concurrency and privacy
+## Notes
 
-- The workbook blob is stored with `access: 'public'`, which keeps the code
-  simple, but means anyone with the exact file URL could read it. If this
-  data is sensitive, ask me and I can switch it to Vercel Blob's private
-  access mode (requires a small server-side change to fetch it with `get()`
-  instead of a public URL).
-- Two people saving at the exact same instant could race and one write could
-  be dropped. For a small team this is unlikely to bite, but if it matters,
-  I can add ETag-based conditional writes (`ifMatch`) so a save fails loudly
-  instead of silently overwriting a concurrent change.
+- Writes are no longer at risk of the "two people save at once, one write
+  disappears" problem the file-based version had — each update is a
+  targeted SQL statement, and the client order-count bump uses an atomic
+  Postgres function (`increment_client_orders`) instead of a read-then-write.
+- If you ever want to add real authentication (so only specific people can
+  open the app at all, not just "whoever has the link"), Supabase Auth
+  plugs in cleanly on top of this — happy to wire that up if you want it.
